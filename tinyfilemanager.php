@@ -1,6 +1,10 @@
 <?php
 //Default Configuration
-$CONFIG = '{"lang":"en","error_reporting":false,"show_hidden":false,"hide_Cols":false,"theme":"light"}';
+if (is_file(FM_Config::CONFIG_FILE)) {
+    $CONFIG = file_get_contents(FM_Config::CONFIG_FILE);
+} else {
+    $CONFIG = '{"lang":"en","error_reporting":false,"show_hidden":false,"hide_Cols":false,"theme":"light"}';
+}
 
 /**
  * H3K | Tiny File Manager V2.5.3
@@ -145,8 +149,12 @@ $ip_blacklist = array(
 // if User has the external config file, try to use it to override the default config above [config.php]
 // sample config - https://tinyfilemanager.github.io/config-sample.txt
 $config_file = __DIR__.'/config.php';
+if (defined('__BPC__')) {
+    include_silent($config_file);
+} else {
 if (is_readable($config_file)) {
     @include($config_file);
+}
 }
 
 // External CDN resources that can be used in the HTML (replace for GDPR compliance)
@@ -245,10 +253,14 @@ if (defined('FM_EMBED')) {
 
 //Generating CSRF Token
 if (empty($_SESSION['token'])) {
+    if (defined('__BPC__')) {
+        $_SESSION['token'] = bin2hex(random_bytes(32));
+    } else {
     if (function_exists('random_bytes')) {
         $_SESSION['token'] = bin2hex(random_bytes(32));
     } else {
     	$_SESSION['token'] = bin2hex(openssl_random_pseudo_bytes(32));
+    }
     }
 }
 
@@ -531,7 +543,7 @@ if ((isset($_SESSION[FM_SESSION_ID]['logged'], $auth_users[$_SESSION[FM_SESSION_
     if (isset($_POST['type']) && $_POST['type'] == "settings") {
         global $cfg, $lang, $report_errors, $show_hidden_files, $lang_list, $hide_Cols, $theme;
         $newLng = $_POST['js-language'];
-        fm_get_translations([]);
+        fm_get_translations();
         if (!array_key_exists($newLng, $lang_list)) {
             $newLng = 'en';
         }
@@ -597,7 +609,7 @@ if ((isset($_SESSION[FM_SESSION_ID]['logged'], $auth_users[$_SESSION[FM_SESSION_
         //prevent 127.* domain and known ports
         $domain = parse_url($url, PHP_URL_HOST);
         $port = parse_url($url, PHP_URL_PORT);
-        $knownPorts = [22, 23, 25, 3306];
+        $knownPorts = array(22, 23, 25, 3306);
 
         if (preg_match("/^localhost$|^127(?:\.[0-9]+){0,2}\.[0-9]+$|^(?:0*\:)*?:?0*1$/i", $domain) || in_array($port, $knownPorts)) {
             $err = array("message" => "URL is not allowed");
@@ -605,7 +617,11 @@ if ((isset($_SESSION[FM_SESSION_ID]['logged'], $auth_users[$_SESSION[FM_SESSION_
             exit();
         }
 
+        if (defined('__BPC__')) {
+            $use_curl = true;
+        } else {
         $use_curl = false;
+        }
         $temp_file = tempnam(sys_get_temp_dir(), "upload-");
         $fileinfo = new stdClass();
         $fileinfo->name = trim(basename($url), ".\x00..\x20");
@@ -1135,8 +1151,12 @@ if (isset($_POST['group'], $_POST['token']) && (isset($_POST['zip']) || isset($_
             $zipper = new FM_Zipper();
             $res = $zipper->create($zipname, $files);
         } elseif ($ext == 'tar') {
+            if (defined('__BPC__')) {
+                die('expect not reach here!');
+            } else {
             $tar = new FM_Zipper_Tar();
             $res = $tar->create($zipname, $files);
+            }
         }
 
         if ($res) {
@@ -1195,6 +1215,9 @@ if (isset($_POST['unzip'], $_POST['token']) && !FM_READONLY) {
             $zipper = new FM_Zipper();
             $res = $zipper->unzip($zip_path, $path);
         } elseif ($ext == "tar") {
+            if (defined('__BPC__')) {
+                die('expect not reach here!');
+            } else {
             try {
                 $gzipper = new PharData($zip_path);
                 if (@$gzipper->extractTo($path,null, true)) {
@@ -1205,6 +1228,7 @@ if (isset($_POST['unzip'], $_POST['token']) && !FM_READONLY) {
             } catch (Exception $e) {
                 //TODO:: need to handle the error
                 $res = true;
+            }
             }
         }
 
@@ -2583,9 +2607,13 @@ function fm_is_exclude_items($file) {
  * @param int $tr
  * @return array
  */
-function fm_get_translations($tr) {
+function fm_get_translations($tr = array()) {
     try {
+        if (defined('__BPC__')) {
+            $content = resource_get_contents('translation.json');
+        } else {
         $content = @file_get_contents('translation.json');
+        }
         if($content !== FALSE) {
             $lng = json_decode($content, TRUE);
             global $lang_list;
@@ -2637,6 +2665,8 @@ function fm_get_size($file)
         }
     }
 
+    if (defined('__BPC__')) {
+    } else {
     // try the Windows COM interface
     if ($iswin && class_exists("COM")) {
         try {
@@ -2649,6 +2679,7 @@ function fm_get_size($file)
         if (ctype_digit($size)) {
             return $size;
         }
+    }
     }
 
     // if all else fails
@@ -2711,6 +2742,9 @@ function fm_get_zif_info($path, $ext) {
             return $filenames;
         }
     } elseif($ext == 'tar' && class_exists('PharData')) {
+        if (defined('__BPC__')) {
+            die('expect not reach here!');
+        } else {
         $archive = new PharData($path);
         $filenames = array();
         foreach(new RecursiveIteratorIterator($archive) as $file) {
@@ -2727,6 +2761,7 @@ function fm_get_zif_info($path, $ext) {
             );
         }
         return $filenames;
+        }
     }
     return false;
 }
@@ -3125,12 +3160,12 @@ function fm_get_file_mimes($extension)
     $fileTypes['aac'] = 'video/quicktime';
     $fileTypes['m3u'] = 'video/quicktime';
 
-    $fileTypes['php'] = ['application/x-php'];
-    $fileTypes['html'] = ['text/html'];
-    $fileTypes['txt'] = ['text/plain'];
+    $fileTypes['php'] = array('application/x-php');
+    $fileTypes['html'] = array('text/html');
+    $fileTypes['txt'] = array('text/plain');
     //Unknown mime-types should be 'application/octet-stream'
     if(empty($fileTypes[$extension])) {
-      $fileTypes[$extension] = ['application/octet-stream'];
+      $fileTypes[$extension] = array('application/octet-stream');
     }
     return $fileTypes[$extension];
 }
@@ -3362,6 +3397,8 @@ class FM_Zipper
     }
 }
 
+if (defined('__BPC__')) {
+} else {
 /**
  * Class to work with Tar files (using PharData)
  */
@@ -3466,12 +3503,15 @@ class FM_Zipper_Tar
         return false;
     }
 }
+}
 
 /**
  * Save Configuration
  */
  class FM_Config
 {
+    const CONFIG_FILE = '../config.json';
+
      var $data;
 
     function __construct()
@@ -3502,6 +3542,8 @@ class FM_Zipper_Tar
 
     function save()
     {
+        file_put_contents(self::CONFIG_FILE, json_encode($this->data));
+        /*
         $fm_file = __FILE__;
         $var_name = '$CONFIG';
         $var_value = var_export(json_encode($this->data), true);
@@ -3516,6 +3558,7 @@ class FM_Zipper_Tar
                 @fclose($fh);
             }
         }
+        */
     }
 }
 
